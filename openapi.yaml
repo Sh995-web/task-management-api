@@ -1,0 +1,474 @@
+
+openapi: 3.0.3
+
+info:
+  title: Task Management API
+  description: REST API for managing tasks, subtasks, natural-language task creation, and task breakdown.
+  version: 1.0.0
+
+servers:
+  - url: http://127.0.0.1:8000/api
+    description: Local development server
+
+tags:
+  - name: Tasks
+  - name: Natural Language
+  - name: Subtasks
+
+paths:
+
+  /tasks/:
+    get:
+      tags:
+        - Tasks
+      summary: List tasks
+      parameters:
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [low, medium, high]
+        - name: completed
+          in: query
+          schema:
+            type: boolean
+
+        - name: due_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Filter tasks by due date.
+          example: "2026-11-20"
+
+        - name: parent
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter tasks by parent task ID.
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: ordering
+          in: query
+          schema:
+            type: string
+            example: -created_at
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":  
+          description: Tasks retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: string
+                    nullable: true
+                  previous:
+                    type: string
+                    nullable: true
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+
+    post:
+      tags:
+        - Tasks
+      summary: Create a task
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/RequestInProgress"
+        "422":
+          $ref: "#/components/responses/IdempotencyConflict"
+
+  /tasks/{id}/:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      tags:
+        - Tasks
+      summary: Retrieve a task
+      responses:
+        "200":
+          description: Task retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      tags:
+        - Tasks
+      summary: Update a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref:  "#/components/schemas/TaskInput"
+      responses:
+        "200":
+          description: Task updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      tags:
+        - Tasks
+      summary: Partially update a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdate"
+      responses:
+        "200":
+          description: Task updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags:
+        - Tasks
+      summary: Delete a task
+      responses:
+        "204":
+          description: Task deleted successfully
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tasks/from-text/:
+    post:
+      tags:
+        - Natural Language
+      summary: Create a task from natural language
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  example: Remind me to pay rent on the 1st of every month
+      responses:
+        "201":
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/RequestInProgress"
+        "422":
+          $ref: "#/components/responses/IdempotencyConflict"
+        "502":
+          description: Task parsing failed or the LLM returned invalid task data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /tasks/{id}/subtasks/:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      tags:
+        - Subtasks
+      summary: List subtasks
+      responses:
+        "200":
+          description: Subtasks retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    post:
+      tags:
+        - Subtasks
+      summary: Create a subtask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Subtask created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tasks/{id}/breakdown/:
+    post:
+      tags:
+        - Subtasks
+      summary: Generate subtasks from a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "201":
+          description: Subtasks generated successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/RequestInProgress"
+        "422":
+          $ref: "#/components/responses/IdempotencyConflict"
+
+components:
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Optional key used to prevent duplicate requests.
+      schema:
+        type: string
+      example: task-request-001
+
+  schemas:
+
+    TaskInput:
+      type: object
+      required:
+        - title
+        - description
+      properties:
+        title:
+          type: string
+          example: Pay rent
+        description:
+          type: string
+          example: Pay monthly house rent
+        completed:
+          type: boolean
+          default: false
+        due_date:
+          type: string
+          format: date
+          nullable: true
+          example: "2026-12-01"
+        priority:
+          type: string
+          enum: [low, medium, high]
+          default: medium
+        parent:
+          type: integer
+          nullable: true
+        recurrence:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+    TaskUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Pay electricity bill
+        description:
+          type: string
+          example: Pay the electricity bill
+        completed:
+          type: boolean
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        priority:
+          type: string
+          enum: [low, medium, high]
+        parent:
+          type: integer
+          nullable: true
+        recurrence:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+    Task:
+      allOf:
+        - $ref: "#/components/schemas/TaskInput"
+        - type: object
+          properties:
+            id:
+              type: integer
+              readOnly: true
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - details
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  issue:
+                    type: string
+
+  responses:
+
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Validation failed
+              details:
+                - field: title
+                  issue: must not be empty
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: NOT_FOUND
+              message: Resource not found
+              details:
+                - field: detail
+                  issue: No Task matches the given query.
+
+   
+    IdempotencyConflict:
+      description: Idempotency key reused with different request data
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: IDEMPOTENCY_KEY_CONFLICT
+              message: Idempotency key was already used with different request data.
+              details:
+                - field: Idempotency-Key
+                  issue: Use a new key for a different request.
+
+    RequestInProgress:
+      description: Request with this idempotency key is already in progress
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: REQUEST_IN_PROGRESS
+              message: A request with this idempotency key is already in progress.
+              details:
+                - field: Idempotency-Key
+                  issue: Retry this request shortly.
